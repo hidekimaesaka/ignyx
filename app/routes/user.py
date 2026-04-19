@@ -1,4 +1,5 @@
 from http import HTTPStatus
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -12,11 +13,12 @@ from app.schemas.user import UserList, UserPublic, UserSchema
 from app.services.hashing import get_password_hash
 from app.services.jwt import get_current_user
 
-router = APIRouter(prefix='/users')
+router = APIRouter(prefix='/users', tags=['users'])
+T_Session = Annotated[Session, Depends(get_session)]
 
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-def create_user(user: UserSchema, session: Session = Depends(get_session)):
+def create_user(session: T_Session, user: UserSchema):
 
     db_user = session.scalar(
         select(User).where(
@@ -50,18 +52,16 @@ def create_user(user: UserSchema, session: Session = Depends(get_session)):
 
 
 @router.get('/', status_code=HTTPStatus.OK, response_model=UserList)
-def read_users(
-    skip: int = 0, limit: int = 100, session: Session = Depends(get_session)
-):
+def read_users(session: T_Session, skip: int = 0, limit: int = 100):
     users = session.scalars(select(User).offset(skip).limit(limit)).all()
     return {'users': users}
 
 
 @router.put('/{user_id}', status_code=HTTPStatus.OK, response_model=UserPublic)
 def update_user(
+    session: T_Session,
     user_id: int,
     user: UserSchema,
-    session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
 
@@ -89,8 +89,8 @@ def update_user(
 
 @router.delete('/{user_id}', status_code=HTTPStatus.OK, response_model=Message)
 def delete_user(
+    session: T_Session,
     user_id: int,
-    session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
 
