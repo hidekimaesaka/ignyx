@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.routes import health, user
+from app.routes import health, token, user
 
 
 def create_app():
@@ -9,5 +9,6 @@ def create_app():
     # including routes
     app.include_router(health.router)
     app.include_router(user.router)
+    app.include_router(token.router)
 
     return app
