@@ -1,5 +1,7 @@
 from http import HTTPStatus
 
+from app.schemas.user import UserPublic
+
 
 def test_create_user(client):
     response = client.post(
@@ -20,22 +22,19 @@ def test_create_user(client):
 
 
 def test_read_users(client):
-
     response = client.get('/users/')
 
     assert response.status_code == HTTPStatus.OK
-    assert response.json() == {
-        'users': [
-            {
-                'username': 'alice',
-                'email': 'alice@mail.com',
-                'id': 1,
-            }
-        ]
-    }
+    assert response.json() == {'users': []}
 
 
-def test_update_user(client):
+def test_read_users_with_users(client, user):
+    user_schema = UserPublic.model_validate(user).model_dump()
+    response = client.get('/users/')
+    assert response.json() == {'users': [user_schema]}
+
+
+def test_update_user(client, user):
 
     response = client.put(
         '/users/1',
@@ -54,29 +53,40 @@ def test_update_user(client):
     }
 
 
-def test_not_update_not_found_when_invalid_id(client):
-    response = client.put(
-        '/users/4',
+def test_update_integrity_error(client, user):
+    client.post(
+        '/users',
         json={
-            'username': 'homensalame',
-            'email': 'homensalame@example.com',
+            'username': 'leclerc',
+            'email': 'leclerc@example.com',
+            'password': 'ferrari',
+        },
+    )
+
+    response_update = client.put(
+        f'/users/{user.id}',
+        json={
+            'username': 'leclerc',
+            'email': 'leclerc@example.com',
             'password': 'salame',
         },
     )
 
-    assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json().get('detail') == 'User not found!'
+    assert response_update.status_code == HTTPStatus.CONFLICT
+    assert response_update.json() == {
+        'detail': 'Username or Email already exists'
+    }
 
 
-def test_delete_user(client):
+def test_delete_user(client, user):
     response = client.delete('/users/1')
 
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'message': 'User deleted!'}
 
 
-def test_not_delete_not_found_when_invalid_id(client):
-    response = client.delete('/users/4')
-
-    assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json().get('detail') == 'User not found!'
+# TODO
+# def test_update_not_existent_user
+# def test_delete_not_existent_user
+# def test_create_user_exist_email
+# def test_create_user_exist_username

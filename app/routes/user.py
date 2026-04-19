@@ -1,51 +1,96 @@
 from http import HTTPStatus
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
+from app.db import get_session
+from app.models.user import User
 from app.schemas.message import Message
-from app.schemas.user import UserDB, UserList, UserPublic, UserSchema
+from app.schemas.user import UserList, UserPublic, UserSchema
 
 router = APIRouter(prefix='/users')
 
-fake_db = []
-
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-def create_user(user: UserSchema):
+def create_user(user: UserSchema, session: Session = Depends(get_session)):
 
-    user_with_id = UserDB(**user.model_dump(), id=len(fake_db) + 1)
+    db_user = session.scalar(
+        select(User).where(
+            (User.username == user.username) | (User.email == user.email)
+        )
+    )
 
-    fake_db.append(user_with_id)
+    if db_user:
+        if db_user.username == user.username:
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='Username already exists',
+            )
+        elif db_user.email == user.email:
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='Email already exists',
+            )
 
-    return user_with_id
+    db_user = User(
+        username=user.username, password=user.password, email=user.email
+    )
+
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+
+    return db_user
 
 
 @router.get('/', status_code=HTTPStatus.OK, response_model=UserList)
-def read_users():
-    return {'users': fake_db}
+def read_users(
+    skip: int = 0, limit: int = 100, session: Session = Depends(get_session)
+):
+    users = session.scalars(select(User).offset(skip).limit(limit)).all()
+    return {'users': users}
 
 
 @router.put('/{user_id}', status_code=HTTPStatus.OK, response_model=UserPublic)
-def update_user(user_id: int, user: UserSchema):
+def update_user(
+    user_id: int, user: UserSchema, session: Session = Depends(get_session)
+):
 
-    if user_id > len(fake_db) or user_id < 1:
+    db_user = session.scalar(select(User).where(User.id == user_id))
+    if not db_user:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND, detail='User not found!'
         )
 
-    updated_user = UserDB(**user.model_dump(), id=user_id)
-    fake_db[user_id - 1] = updated_user
+    try:
+        db_user.username = user.username
+        db_user.email = user.email
+        db_user.password = user.password
 
-    return updated_user
+        session.commit()
+        session.refresh(db_user)
+
+        return db_user
+
+    except IntegrityError:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail='Username or Email already exists',
+        )
 
 
 @router.delete('/{user_id}', status_code=HTTPStatus.OK, response_model=Message)
-def delete_user(user_id: int):
-    if user_id > len(fake_db) or user_id < 1:
+def delete_user(user_id: int, session: Session = Depends(get_session)):
+    db_user = session.scalar(select(User).where(User.id == user_id))
+
+    if not db_user:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND, detail='User not found!'
         )
 
-    del fake_db[user_id - 1]
+    session.delete(db_user)
+    session.commit()
 
     return {'message': 'User deleted!'}
