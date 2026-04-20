@@ -1,13 +1,14 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, registry
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
+from sqlalchemy.orm import registry
 
 from app.settings import Settings
 
 global_registry = registry()
 
-engine = create_engine(Settings().DATABASE_URL)
+engine = create_async_engine(Settings().DATABASE_URL)
 
 
-def get_session():
-    with Session(engine) as session:
+async def get_session():
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
